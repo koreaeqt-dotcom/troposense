@@ -1,0 +1,39 @@
+TropoSense Smart Healthcare Platform v2 — Verification
+Date: 2026-11-22 (Asia/Bangkok)
+
+Automated checks
+- npm test: 14 passed, 0 failed
+- npm run build: TypeScript and Vite production build passed
+- Model checks: invalid glucose; no invented cTnI conversion; patient role scoping; linked-record deletion; QC expiry/incomplete/missing date; honest break-even margins; malformed storage; CSV formula/quote escaping; missed appointments; cross-patient mutation protection; stale-tab merge; complete screening report fields.
+
+Browser verification
+- Home and all 11 main routes visited; Revenue/Cost/Calculator subroutes visited.
+- Administrator, Healthcare Professional and Patient demo login tested.
+- Patient sees only PT-0001; QC direct route blocked; Professional settings controls disabled.
+- Patient add/edit/profile/search; persisted after reload; fictional result with separate cTnI recorded; patient deletion tested.
+- QC add/edit/delete tested; expired fully checked cartridge displays Fail; future expiry displays Pass.
+- Screening High and Moderate scenarios saved; emergency guidance displayed; patient switch cleared previous draft.
+- Doctor profile selection, referral creation, Reviewed status and Doctor Notes saved.
+- Emergency location fixture, doctor/contact notification simulation and event closing tested.
+- Follow-up add/edit/cancel, reminder flag and calendar month navigation tested.
+- Settings save/compact mode survives refresh; cross-tab organization synchronization verified; reset tested.
+- Existing manual Glucose input -> Results transition verified in new shell.
+- CSV/JSON downloads verified; CSV contents inspected.
+- Break-even UI: cost 150 -> 750 tests; 2 readers costing 2500 each -> 730 tests.
+- Console error/warning checks: none observed during verification.
+- Responsive visual checks: 1440x900, 768x1024, 390x844. Mobile navigation works. Home overflow regression fixed and width checked.
+- Restored clean seed dataset after QA.
+
+Review
+- Independent read-only source review identified four Important issues.
+- Fixed record ownership, multi-tab synchronization, cross-patient draft carryover and missing screening summary fields.
+- Scope choices: no reference mockup image supplied; used stated brand palette. All operations local. Unknown costs remain blank. No clinical risk inference or calibration conversion.
+
+Limits
+- Frontend prototype only; no clinical validation, real login, backend, real notifications, AI/OCR model, doctor communication or 1669 integration.
+- LocalStorage isn't secure clinical storage or a multi-user transaction database; simultaneous edits to one record use last-write-wins.
+- Automated tests cover domain behavior. Browser checks are manual UI automation, not a complete cross-browser regression suite.
+
+Presentation update: Product wording replaces repeated Demo/sample labels across primary screens. System limitations are available in the expandable footer and Settings. OCR and external communication limitations remain disclosed at the relevant action. Existing user-added records are retained. Browser checked Home, sign-in, Dashboard, patient names and expandable system information; no console errors observed. Tests 14/14 and production build passed.
+
+cTnI calibration update (2026-11-22): automated suite 32/32 passed; TypeScript/Vite production build passed. Focused independent review completed; OCR confirmation race fixed. Browser checks: unconfirmed rejected, default unavailable, demo150->10, range201 rejected, OCR demo124->3.01995, persistence and reports labelled, Patient Profile read-only calculated value, independent emergency access, mobile width390 no overflow, no console errors. See CALIBRATION-AUDIT-TH.txt.

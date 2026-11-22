@@ -1,0 +1,80 @@
+รายงานตรวจสอบและแก้ไขระบบคำนวณ cTnI — TropoSense
+วันที่ 22 พฤศจิกายน 2569
+โปรเจกต์เดิม: outputs/troposense
+
+1. ก่อนแก้ไขใช้สูตรอะไร
+ไม่มีสูตรแปลง Glucose เป็น cTnI ในโค้ดเดิม ฟังก์ชัน createRecord() กำหนด ctni:null เสมอ
+OCR เป็น Mock Interaction ให้ค่า Glucose คงที่ 124 mg/dL ไม่ได้อ่านข้อความจากภาพจริง ส่วน Manual Input รับตัวเลขจากช่องกรอก
+ทั้งสองเส้นทางเรียก createRecord() อยู่แล้ว แต่เดิมฟังก์ชันนี้ไม่มี Calibration
+Patient Records เคยรับค่า cTnI สมมติแยกด้วยมือได้ และมีชุดเริ่มต้น ctniDemo ใช้ค่าจาก [12,18,10,15] ตามตำแหน่งรายการ ไม่ใช่ผลจากการสอบเทียบ
+
+2. สูตรเดิม/ข้อมูลเดิมอยู่ที่ใด
+src/model.ts: TestRecord, validReading, createRecord, reportText
+src/pages/Scan.tsx: OCR จำลอง, Manual Input, Confirm & Continue
+src/platform/Platform.tsx: callback เชื่อม Scan -> createRecord -> ฐานข้อมูลในเบราว์เซอร์
+src/platform/Patients.tsx: เส้นทางบันทึก Glucose และ cTnI สมมติแยก
+src/platform/domain.ts: seedDatabase, ctniDemo, การบันทึกและอ่านข้อมูล
+src/pages/Results.tsx: เดิมแสดง Estimated cTnI เป็นขีดและสถานะไม่มี Calibration
+Dashboard, Followup และรายงานผู้ป่วยเคยอ่าน ctniDemo โดยตรง
+
+3. แก้ไขอะไรและไฟล์ใด
+เพิ่ม src/config/calibration.ts แยกข้อมูล Calibration จริง, DEMO และเกณฑ์อ้างอิงออกจากสูตร
+เพิ่ม src/calibration/evaluate.ts เป็นฟังก์ชัน pure เดียวสำหรับการตรวจข้อมูลและคำนวณ
+แก้ src/model.ts ให้ createRecord() เรียก evaluateCtni() และบันทึกชนิดผล/Calibration ID พร้อมตัวเลข; เพิ่ม ctniDisplay() ตรวจความสอดคล้องกับ Configuration ก่อนแสดง
+เพิ่ม src/components/CalibrationControls.tsx สำหรับเลือกโหมดและยืนยันตัวเลข/หน่วย; เพิ่ม CtniValue.tsx เพื่อแสดงค่ากับคำเตือนให้สม่ำเสมอ
+แก้ Scan.tsx และ Platform.tsx ให้ส่งค่าพร้อมการยืนยันเข้าสู่ฟังก์ชันเดียวกัน
+แก้ Patients.tsx ให้ช่อง cTnI เป็น read-only คำนวณจากฟังก์ชันเดียวกัน ไม่กรอกค่าประมาณแยกใหม่
+แก้ Results.tsx, Dashboard.tsx, Followup.tsx และรายงานใน domain.ts เฉพาะการแสดง cTnI/สถานะ/คำเตือน
+แก้ domain.ts ให้รองรับผลคำนวณใน LocalStorage และปฏิเสธตัวเลขที่ไม่สอดคล้องกับ Calibration; ข้อมูลเดิมยังอ่านได้ ไม่ล้างประวัติ
+เพิ่ม src/config/screening.ts ย้ายกติกาป้ายอาการ DEMO ออกจาก domain.ts ไม่มีการรับ cTnI ไปสร้างระดับความเสี่ยง
+แก้ Screening.tsx เพิ่มข้อความสถานะเกณฑ์อ้างอิง ไม่มีการเปลี่ยนขั้นตอนอาการหรือระบบฉุกเฉิน
+ปรับ LegacyApp.tsx ให้ส่งข้อมูลยืนยันต่อได้แม้ไม่ได้ใช้เป็นหน้าหลัก
+เพิ่ม/แก้ Unit Tests และคำสั่ง npm test ใน package.json
+ไม่ได้สร้างเว็บไซต์ใหม่ ไม่เพิ่มหน้า ไม่เปลี่ยน CSS, เมนู, QC, Doctor Connect, Business Model หรือการทำงานนัดหมาย
+
+4. ปัจจุบันใช้สมการอะไร
+C = C0 × 10^((G − b) / a)
+สมการไปข้างหน้าเทียบเท่า G = a × log10(C/C0) + b
+G หน่วย mg/dL; C และ C0 หน่วย ng/L
+คำนวณใน log-space เป็น 10^(log10(C0) + (G-b)/a) เพื่อเลี่ยง overflow ระหว่างทาง พร้อมตรวจผลก่อนแสดง
+ตรวจตัวเลขจำกัดและเป็นบวก, a ไม่เป็น 0, b เป็นตัวเลขจำกัด, C0 เป็นบวก, หน่วย mg/dL และ ng/L, ช่วง Glucose/ช่วง cTnI และ overflow/underflow
+ไม่ extrapolate นอกช่วงสอบเทียบ ค่าอยู่นอกช่วงหรือข้อมูลผิดจะถูกปฏิเสธ ไม่มี Calibration ที่ผ่านการตรวจสอบจะบันทึก Glucose ได้ แต่ไม่สร้างผล cTnI
+ต้องยืนยันตัวเลขกับหน่วยก่อนบันทึก เมื่อเปลี่ยนตัวเลข/โหมด/ภาพ หรือ OCR อ่านเสร็จ จะต้องยืนยันใหม่ ระหว่างสแกนกดยืนยันไม่ได้
+
+5. ค่าคงที่จริงหรือจำลอง
+CALIBRATION_CONFIG: status=unavailable, source=none, a=null, b=null, C0=null, ช่วงสอบเทียบ=null, review=null
+จึงยังไม่มีการใช้สัมประสิทธิ์จากการทดลองจริง และค่าเริ่มต้นไม่แสดงผล cTnI
+DEMO_CALIBRATION_CONFIG: a=50, b=100, C0=1 ng/L, ช่วง G=50–200 mg/dL, ช่วง C=0.1–100 ng/L
+ตัวเลขและช่วง DEMO ทั้งหมดสร้างเพื่อทดสอบเลขคณิตเท่านั้น ไม่ใช่ผลทดลอง ไม่ใช่ช่วงเครื่องอ่านที่ยืนยัน และไม่ใช่ค่าจาก Ze et al.
+ต้องเลือก DEMO อย่างชัดเจน ผลตัวเลขทุกตำแหน่งและรายงานแสดง: ข้อมูลจำลอง — ไม่ใช่ผลตรวจทางการแพทย์
+ค่า ctniDemo เดิมยังคงไว้เป็นประวัติจำลองพร้อมข้อความเดียวกัน ไม่อ้างว่าคำนวณด้วยโมเดลใหม่ และไม่ใช้ประเมินความเสี่ยง
+
+6. เกณฑ์ Troponin สูงผิดปกติ
+ไม่พบการใช้ 20 หรือ 40 ng/L เป็นเกณฑ์ในโค้ดเดิม
+CTNI_REFERENCE_CONFIG: status=unavailable, upperLimitNgL=null, หลักฐาน/ผู้ทบทวน/วันที่ทบทวน=null
+ระบบแสดง: ยังไม่มีเกณฑ์อ้างอิงที่ผ่านการตรวจสอบ
+ไม่มีการสร้าง Low/Moderate/High จาก cTnI และผล DEMO ไม่ถูกเปรียบเทียบกับเกณฑ์ทางคลินิก
+ป้าย Low/Moderate/High ของ TropoBot มีอยู่เดิมจากอาการเท่านั้น ปัจจุบันอยู่ใน DEMO_SCREENING_RULES, clinicalValidated=false พร้อมคำชี้แจงว่าเป็นสถานการณ์สาธิต ไม่ใช่ระดับความเสี่ยงทางคลินิก
+ไม่มีการวินิจฉัยภาวะหัวใจวายจาก Troponin ค่าเดียว เมนูฉุกเฉินและข้อมูล 1669 ไม่รอผลตรวจหรือ Calibration
+
+7. ผลการทดสอบ
+Unit/Integration Tests รวม 32 รายการผ่านทั้งหมด; TypeScript + Vite production build ผ่าน
+ครอบคลุมสูตรฐาน 10, จุด G=b, การเพิ่มหนึ่ง decade, slope ติดลบที่กำหนดอย่างถูกต้อง, a=0/NaN/Infinity, b ผิด, C0 ไม่เป็นบวก, input ว่าง/ไม่ใช่ตัวเลข/ไม่จำกัด/ค่าติดลบ, หน่วยผิด, ช่วงสอบเทียบผิด/นอกช่วง, overflow/underflow, การยืนยันก่อนคำนวณ, DEMO ไม่ถูกยกระดับเป็นข้อมูลจริง, provenance, storage round-trip และความเข้ากันได้กับข้อมูลเดิม
+Browser: ไม่ยืนยัน -> ปฏิเสธ; Standard ไม่มี Calibration -> ไม่แสดง cTnI; DEMO G=150 -> C=10 ng/L พร้อมคำเตือน; G=201 -> ปฏิเสธนอกช่วง
+Browser OCR: อัปโหลดภาพสำเร็จ; ยืนยันถูกปิดระหว่างสแกน; ค่าจำลอง G=124 -> C=3.01995 ng/L หลังยืนยันใหม่; รีเฟรชแล้วยังมีคำเตือน DEMO; รายละเอียดรายงานไม่อ้างเป็นผลจริง
+Browser Patient Profile: cTnI read-only, G=150 ใน DEMO ได้ 10 ng/L เช่นเดียวกับ Scan
+Browser emergency เข้าถึงได้โดยไม่รอผล; Mobile 390 px ไม่ล้นหน้า; ไม่พบ console error/warning ระหว่างการทดสอบ
+Source review พบจุดกดยืนยันระหว่างสแกนได้ แก้ด้วยการ disable controls ระหว่างสแกนและล้าง confirmation เมื่อ OCR เสร็จ พร้อมตรวจใน Browser
+
+วิธีเตรียมสำหรับการสอบเทียบจริงในอนาคต
+ใส่ a,b,C0 และช่วงสอบเทียบจากข้อมูล TropoSense จริงใน src/config/calibration.ts เท่านั้น ใช้ id ใหม่เมื่อเปลี่ยนชุดพารามิเตอร์ ระบุ source=troposense-experiment, status=validated หลังผ่านการตรวจสอบ พร้อมผู้ทบทวน วันที่ หลักฐาน และการยืนยันความเข้ากันได้ของอุปกรณ์
+สถานะ validated อย่างเดียวไม่พอ ระบบตรวจข้อมูลประกอบด้วย ห้ามเปลี่ยนธงโดยไม่มีการทดลองจริง
+เกณฑ์อ้างอิงทางคลินิกเป็นอีก Configuration แยกจาก Calibration ต้องมีหลักฐานและการทบทวนของตนเองก่อนใช้ เปลี่ยน Calibration ไม่ได้เปิดเกณฑ์อ้างอิงโดยอัตโนมัติ
+รายการเก่าที่ Calibration ID หรือค่าคำนวณไม่ตรงกับ Configuration ปัจจุบันจะถูกระงับตัวเลขไว้ให้ตรวจสอบใหม่ ไม่คำนวณย้อนหลังเงียบ ๆ
+OCR ในโปรเจกต์ยังเป็นการจำลอง และไม่อนุญาตให้สร้างผลจาก Calibration จริงผ่านแหล่งข้อมูล ocr-demo
+
+แหล่งอ้างอิง
+Ze et al. (2025), A glucometer-colorimetric dual mode biosensor for point-of-care testing of cardiac troponin I, Arabian Journal of Chemistry, DOI 10.25259/AJC_178_2024
+https://arabjchem.org/a-glucometer-colorimetric-dual-mode-biosensor-for-point-of-care-testing-of-cardiac-troponin-i/
+ส่วน 3.5 รายงานความสัมพันธ์ glucometer signal กับ log(C) ในระบบตรวจของงานนั้น โดยใช้ cTnI หน่วย ng/mL ต่างจากหน่วย ng/L ที่เว็บไซต์นี้กำหนด
+ใช้เป็นแนวทางเชิงรูปแบบเท่านั้น สมการ normalized ด้วย C0 เป็นแบบจำลองเสนอศึกษาตามคำขอ ไม่อ้างว่าผ่านการพิสูจน์สำหรับ TropoSense และไม่คัดลอกสัมประสิทธิ์หรือช่วงสอบเทียบของงานดังกล่าว
